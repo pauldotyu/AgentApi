@@ -1,0 +1,7 @@
+### Health
+GET /health
+Host: localhost:5258
+
+### Test
+GET /
+Host: localhost:5258
