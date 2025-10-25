@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- deployment.yaml
+- service.yaml
+- serviceaccount.yaml
+configMapGenerator:
+- name: agentapi-config
+  envs:
+  - ../.env
+patches:
+- target:
+    kind: ServiceAccount
+    name: agentapi
+  patch: |-
+    - op: replace
+      path: /metadata/annotations/azure.workload.identity~1client-id
+      value: "e311d66c-e5eb-4ec8-ae43-4f83d0c4b9e7"
+images:
+- name: agentapi
+  newTag: 4h
+  newName: ttl.sh/86a48118-648e-4358-bf2f-b771b613c069

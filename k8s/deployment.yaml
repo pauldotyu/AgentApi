@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentapi
+  namespace: default
+  labels:
+    app: agentapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentapi
+  template:
+    metadata:
+      labels:
+        app: agentapi
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: agentapi
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: agentapi
+      containers:
+      - name: agentapi
+        image: agentapi:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: ASPNETCORE_ENVIRONMENT
+          value: Production
+        envFrom:
+        - configMapRef:
+            name: agentapi-config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
