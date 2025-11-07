@@ -56,11 +56,11 @@ az cognitiveservices account deployment create \
 --sku-name GlobalStandard
 
 # create managed identity
-read -r MI_ID MI_PRINCIPAL_ID MI_CLIENT_ID <<< \
+read -r MI_ID MI_NAME MI_PRINCIPAL_ID MI_CLIENT_ID <<< \
   "$(az identity create \
     --name $AOAI_NAME-id \
     --resource-group $RG_NAME \
-    --query '{id:id, principalId:principalId, clientId:clientId}' -o tsv)"
+    --query '{id:id, name:name, principalId:principalId, clientId:clientId}' -o tsv)"
 
 # assign role to managed identity
 az role assignment create \
@@ -145,7 +145,7 @@ Create a federated identity credential for the AKS cluster's workload identity:
 ```bash
 az identity federated-credential create \
 --name agentapi \
---identity-name $AOAI_NAME-id \
+--identity-name $MI_NAME \
 --resource-group $RG_NAME \
 --issuer $AKS_OIDC_ISSUER_URL \
 --subject "system:serviceaccount:demo:agentapi"
@@ -154,7 +154,7 @@ az identity federated-credential create \
 Build and push the container image:
 
 ```bash
-IMG=$(uuidgen | tr '[:upper:]' '[:lower:]') 
+IMG=$(uuidgen | tr '[:upper:]' '[:lower:]')
 docker buildx build --platform linux/amd64,linux/arm64 -t ttl.sh/$IMG:4h . --push
 ```
 
@@ -182,6 +182,7 @@ EOF
 Deploy to AKS:
 
 ```bash
+export MI_CLIENT_ID
 kustomize build . | envsubst | kubectl apply -n demo -f -
 ```
 
