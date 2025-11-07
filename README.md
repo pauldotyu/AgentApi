@@ -56,16 +56,11 @@ az cognitiveservices account deployment create \
 --sku-name GlobalStandard
 
 # create managed identity
-MI_ID=$(az identity create \
---name oai-agentdemo$RAND-id \
---resource-group $RG_NAME \
---query id -o tsv)
-
-# get managed identity principal id
-MI_PRINCIPAL_ID=$(az identity show \
---ids $MI_ID \
---query principalId \
--o tsv)
+read -r MI_ID MI_PRINCIPAL_ID MI_CLIENT_ID <<< \
+  "$(az identity create \
+    --name $AOAI_NAME-id \
+    --resource-group $RG_NAME \
+    --query '{id:id, principalId:principalId, clientId:clientId}' -o tsv)"
 
 # assign role to managed identity
 az role assignment create \
@@ -82,23 +77,30 @@ az role assignment create \
 
 ### Running the Application
 
-1. **Start the telemetry stack** (Loki, Tempo, Prometheus, and OpenTelemetry Collector):
+Start the telemetry stack (Loki, Grafana, Tempo, Prometheus, and OpenTelemetry Collector):
 
-   ```bash
-   docker compose up -d
-   ```
+```bash
+docker compose up -d
+```
 
-2. **Run the application**:
+Write a .env file with the following content:
 
-   ```bash
-   dotnet run
-   ```
+```bash
+cat <<EOF | tee .env
+AZURE_OPENAI_ENDPOINT=https://$AOAI_NAME.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5-mini
+EOF
+```
 
-3. **View telemetry data in Grafana**:
+Run the application:
 
-   Open Grafana and use Explore to view traces from Tempo, logs from Loki, and metrics from Prometheus.
+```bash
+dotnet run
+```
 
-The application automatically sends logs, traces, and metrics to the OpenTelemetry Collector (<http://localhost:4317>).
+View telemetry data in Grafana:
+
+Open Grafana and use Explore to view traces from Tempo, logs from Loki, and metrics from Prometheus.
 
 ### Stopping the Application
 
@@ -108,4 +110,82 @@ Ctrl+C
 
 # Stop the telemetry stack
 docker compose down -v
+```
+
+## Azure Kubernetes Service (AKS) Deployment
+
+To deploy the application to Azure Kubernetes Service (AKS), follow these steps:
+
+Create an AKS cluster and enable managed identity:
+
+```bash
+AKS_NAME=aks-agentdemo$RAND
+
+read -r AKS_OIDC_ISSUER_URL <<< \
+  "$(az aks create \
+    --resource-group $RG_NAME \
+    --name $AKS_NAME \
+    --enable-workload-identity \
+    --enable-oidc-issuer \
+    --enable-azure-monitor-app-monitoring \
+    --query '{oidcIssuerUrl:oidcIssuerProfile.issuerUrl}' -o tsv)"
+```
+
+Connect to the AKS cluster:
+
+```bash
+az aks get-credentials \
+--resource-group $RG_NAME \
+--name $AKS_NAME
+```
+
+Create a federated identity credential for the AKS cluster's workload identity:
+
+```bash
+az identity federated-credential create \
+--name agentapi \
+--identity-name $AOAI_NAME-id \
+--resource-group $RG_NAME \
+--issuer $AKS_OIDC_ISSUER_URL \
+--subject "system:serviceaccount:demo:agentapi"
+```
+
+Build and push the container image:
+
+```bash
+IMG=$(uuidgen | tr '[:upper:]' '[:lower:]') 
+docker buildx build --platform linux/amd64,linux/arm64 -t ttl.sh/$IMG:4h . --push
+```
+
+Make sure you are in the k8s directory:
+
+```bash
+cd k8s
+```
+
+Edit the kustomization.yaml file to use your image:
+
+```bash
+kustomize edit set image agentapi=ttl.sh/$IMG:4h
+```
+
+Write a .env file with the following content:
+
+```bash
+cat <<EOF | tee .env
+AZURE_OPENAI_ENDPOINT=https://$AOAI_NAME.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5-mini
+EOF
+```
+
+Deploy to AKS:
+
+```bash
+kustomize build . | envsubst | kubectl apply -n demo -f -
+```
+
+Port-forward the service to access the API:
+
+```bash
+kubectl port-forward service/agentapi -n demo 5258:80
 ```

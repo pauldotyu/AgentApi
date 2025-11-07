@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: agentapi
-  namespace: default
   labels:
     app: agentapi
 spec:
