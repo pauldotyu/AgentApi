@@ -125,6 +125,7 @@ read -r AKS_OIDC_ISSUER_URL <<< \
   "$(az aks create \
     --resource-group $RG_NAME \
     --name $AKS_NAME \
+    --node-vm-size standard_d2ds_v6 \
     --enable-workload-identity \
     --enable-oidc-issuer \
     --enable-azure-monitor-app-monitoring \
